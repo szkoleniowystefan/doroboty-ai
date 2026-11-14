@@ -1,11 +1,16 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { usePostHog } from "@posthog/react";
 import { ApplicationRecord } from "./application-record";
 import type { Application } from "./model";
 import { usePrototype } from "./store";
 import { WorkSampleEvidence } from "./work-sample-summary";
 
 export function CandidateApplication({ application }: { application: Application }) {
+  const posthog = usePostHog();
+  const isPostHogConfigured = Boolean(
+    import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN && import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+  );
   const { state, run } = usePrototype();
   const [confirming, setConfirming] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -46,6 +51,7 @@ export function CandidateApplication({ application }: { application: Application
                   variant="destructive"
                   onClick={() => {
                     if (run({ type: "withdraw", applicationId: application.id })) {
+                      if (isPostHogConfigured) posthog.capture("application_withdrawn");
                       focusAfter.current = "status";
                       setConfirming(false);
                       setAnnouncement("Aplikacja została wycofana.");

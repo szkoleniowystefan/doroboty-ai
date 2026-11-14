@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { ArrowRight, Bot } from "lucide-react";
+import { usePostHog } from "@posthog/react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { FormSelect } from "@/components/ui/form-select";
@@ -17,6 +18,10 @@ import {
 import { WorkSampleLayout } from "./work-sample-layout";
 
 export function WorkSampleTask({ job, sample }: { job: JobWithCompany; sample?: WorkSample }) {
+  const posthog = usePostHog();
+  const isPostHogConfigured = Boolean(
+    import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN && import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+  );
   const { run, issue } = usePrototype();
   const navigate = useNavigate();
   const [value, setValue] = useState<WorkSampleInput>(
@@ -45,6 +50,7 @@ export function WorkSampleTask({ job, sample }: { job: JobWithCompany; sample?: 
         (message) => message.proposed,
       ) as WorkSampleInput["categories"],
     });
+    if (isPostHogConfigured) posthog.capture("work_sample_suggestion_requested");
     requestAnimationFrame(() =>
       firstCategoryRef.current?.querySelector<HTMLButtonElement>("button")?.focus(),
     );
@@ -58,8 +64,10 @@ export function WorkSampleTask({ job, sample }: { job: JobWithCompany; sample?: 
       else explanationRef.current?.focus();
       return;
     }
-    if (run({ type: "work_sample", jobId: job.id, value: parsed.data, complete: true }))
+    if (run({ type: "work_sample", jobId: job.id, value: parsed.data, complete: true })) {
+      if (isPostHogConfigured) posthog.capture("work_sample_completed");
       navigate(`${base}/podsumowanie`);
+    }
   }
   return (
     <WorkSampleLayout
