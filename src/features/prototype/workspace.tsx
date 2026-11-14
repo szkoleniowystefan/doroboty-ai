@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { CheckCircle2, FileText } from "lucide-react";
+import { usePostHog } from "@posthog/react";
 import { ConfettiBurst, type ConfettiOrigin } from "@/components/confetti-burst";
 import { BackLink } from "@/components/back-link";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -141,6 +142,10 @@ export function WorkspaceHome() {
   );
 }
 export function ProfilePage({ preview = false }: { preview?: boolean }) {
+  const posthog = usePostHog();
+  const isPostHogConfigured = Boolean(
+    import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN && import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+  );
   const { state, run } = usePrototype();
   const person = currentPerson(state)!;
   const [message, setMessage] = useState("");
@@ -157,8 +162,10 @@ export function ProfilePage({ preview = false }: { preview?: boolean }) {
           location: String(data.get("location")),
         },
       })
-    )
+    ) {
       setMessage("Profil został zapisany.");
+      if (isPostHogConfigured) posthog.capture("profile_saved");
+    }
   }
   return (
     <>
@@ -232,6 +239,10 @@ export function SavedPage() {
 }
 export function ApplyPage() {
   const { slug } = useParams();
+  const posthog = usePostHog();
+  const isPostHogConfigured = Boolean(
+    import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN && import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+  );
   const { state, run } = usePrototype();
   const person = currentPerson(state)!;
   const navigate = useNavigate();
@@ -286,6 +297,12 @@ export function ApplyPage() {
       return;
     }
     if (run({ type: "submit", jobId: job!.id, notes, generated, answer, consent })) {
+      if (isPostHogConfigured) {
+        posthog.capture("application_submitted", {
+          job_category: job!.category,
+          includes_completed_work_sample: Boolean(workSample?.completedAt),
+        });
+      }
       submittedOnce.current = true;
       setSubmitted(true);
       if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {

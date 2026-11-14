@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { usePostHog } from "@posthog/react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,6 +17,7 @@ import { currentPerson, jobSchema } from "./model";
 import { usePrototype } from "./store";
 import { Field } from "./workspace";
 import { Empty, NotFound, PageTitle } from "./shell";
+import { posthogLogInfo } from "@/lib/posthog-logs";
 
 export function EmployerJobs() {
   const { state } = usePrototype();
@@ -67,6 +69,10 @@ export function EmployerJobs() {
 }
 export function EmployerJobEditor() {
   const { id } = useParams();
+  const posthog = usePostHog();
+  const isPostHogConfigured = Boolean(
+    import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN && import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+  );
   const { state, run } = usePrototype();
   const person = currentPerson(state)!;
   const navigate = useNavigate();
@@ -133,7 +139,21 @@ export function EmployerJobEditor() {
       );
       return;
     }
-    if (run({ type: "publish", job: parsed.data })) navigate("/app/oferty");
+    if (run({ type: "publish", job: parsed.data })) {
+      if (isPostHogConfigured) {
+        posthog.capture("job_published", {
+          job_category: parsed.data.category,
+          job_function: parsed.data.function,
+          is_new: !existing,
+        });
+        posthogLogInfo("job published", {
+          job_category: parsed.data.category,
+          job_function: parsed.data.function,
+          is_new: !existing,
+        });
+      }
+      navigate("/app/oferty");
+    }
   }
   return (
     <>
@@ -170,6 +190,7 @@ export function EmployerJobEditor() {
               setGenerated(
                 `${title}\n\nO roli\n${source.trim().slice(0, 10000)}\n\nJak pracujemy\nŁączymy potrzeby użytkowników, odpowiedzialne wykorzystanie AI i mierzalne efekty.\n\nProces rekrutacji\nPrześlij aplikację i opowiedz o projekcie, w którym Twoje decyzje wpłynęły na wynik.`,
               );
+              if (isPostHogConfigured) posthog.capture("job_description_generated");
               setApproved(false);
             }}
           >
@@ -273,6 +294,10 @@ export function EmployerJobEditor() {
   );
 }
 export function CompanyEditor() {
+  const posthog = usePostHog();
+  const isPostHogConfigured = Boolean(
+    import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN && import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+  );
   const { state, run } = usePrototype();
   const person = currentPerson(state)!;
   const company = state.companies.find((x) => x.id === person.companyId)!;
@@ -286,8 +311,10 @@ export function CompanyEditor() {
         name: String(data.get("name")),
         description: String(data.get("description")),
       })
-    )
+    ) {
       setMessage("Dane firmy zostały zapisane.");
+      if (isPostHogConfigured) posthog.capture("company_profile_saved");
+    }
   }
   return (
     <>

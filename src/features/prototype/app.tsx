@@ -1,5 +1,8 @@
+import { useEffect, useRef } from "react";
+import { usePostHog } from "@posthog/react";
 import { HashRouter, Routes, Route, Navigate } from "react-router";
-import { PrototypeProvider } from "./store";
+import { currentPerson } from "./model";
+import { PrototypeProvider, usePrototype } from "./store";
 import { Shell, NotFound } from "./shell";
 import HomePage from "./home";
 import MethodologyPage from "./methodology";
@@ -18,6 +21,39 @@ import { EmployerJobs, EmployerJobEditor, CompanyEditor } from "./employer";
 import { SettingsPage, PrivacyPage } from "./settings";
 import { CasePage } from "./case";
 import { WorkSamplePage } from "./work-sample";
+function PostHogIdentity() {
+  const posthog = usePostHog();
+  const { state } = usePrototype();
+  const person = currentPerson(state);
+  const personId = person?.id;
+  const personName = person?.name;
+  const personRole = person?.role;
+  const previousPersonId = useRef<string | null | undefined>(undefined);
+  const isConfigured = Boolean(
+    import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN && import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+  );
+
+  useEffect(() => {
+    if (!isConfigured) return;
+
+    if (!personId || !personName || !personRole) {
+      if (previousPersonId.current) posthog.reset();
+      previousPersonId.current = null;
+      return;
+    }
+
+    if (previousPersonId.current && previousPersonId.current !== personId) posthog.reset();
+
+    posthog.identify(personId, {
+      name: personName,
+      role: personRole,
+    });
+    previousPersonId.current = personId;
+  }, [isConfigured, personId, personName, personRole, posthog]);
+
+  return null;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -154,6 +190,7 @@ function AppRoutes() {
 export function App() {
   return (
     <PrototypeProvider>
+      <PostHogIdentity />
       <HashRouter>
         <AppRoutes />
       </HashRouter>

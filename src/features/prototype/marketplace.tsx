@@ -1,5 +1,6 @@
 import { Link, useLocation, useParams, useSearchParams } from "react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { usePostHog } from "@posthog/react";
 import { ArrowUpRight, Users, MapPin, BriefcaseBusiness, Bookmark } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Search, ArrowRight, Monitor, X } from "lucide-react";
@@ -26,6 +27,7 @@ import { usePrototype } from "./store";
 import { currentPerson, publishedJobs } from "./model";
 import { NotFound } from "./shell";
 import { cn } from "@/lib/utils";
+import { posthogLogInfo } from "@/lib/posthog-logs";
 
 function LocalMap({ jobs }: { jobs: JobWithCompany[] }) {
   const [selected, setSelected] = useState<string | null>(null);
@@ -97,6 +99,10 @@ function LocalMap({ jobs }: { jobs: JobWithCompany[] }) {
   );
 }
 export function JobsPage() {
+  const posthog = usePostHog();
+  const isPostHogConfigured = Boolean(
+    import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN && import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+  );
   const { state } = usePrototype();
   const person = currentPerson(state);
   const [params, setParams] = useSearchParams();
@@ -124,6 +130,9 @@ export function JobsPage() {
     if (value) next.set(key, value);
     else next.delete(key);
     setParams(next);
+    if (isPostHogConfigured) {
+      posthog.capture("job_filter_updated", { filter_key: key, has_value: Boolean(value) });
+    }
   }
   function removeFilter(key: string) {
     const keys = Object.entries(filters)
@@ -147,6 +156,18 @@ export function JobsPage() {
       else next.delete(key);
     }
     setParams(next);
+    if (isPostHogConfigured) {
+      posthog.capture("job_search_submitted", {
+        has_query: Boolean(next.get("query")),
+        has_location: Boolean(next.get("location")),
+        result_count: filterJobs(all, parseJobFilters(Object.fromEntries(next))).length,
+      });
+      posthogLogInfo("job search submitted", {
+        has_query: Boolean(next.get("query")),
+        has_location: Boolean(next.get("location")),
+        result_count: filterJobs(all, parseJobFilters(Object.fromEntries(next))).length,
+      });
+    }
   }
   const locations = [...new Set(all.flatMap((x) => x.locations))];
   return (
@@ -341,6 +362,10 @@ export function JobPage() {
     });
     return () => cancelAnimationFrame(frame);
   }, [location.hash, location.key, slug]);
+  const posthog = usePostHog();
+  const isPostHogConfigured = Boolean(
+    import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN && import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+  );
   const { state, run } = usePrototype();
   const person = currentPerson(state);
   const job = publishedJobs(state).find((x) => x.slug === slug);
@@ -353,6 +378,15 @@ export function JobPage() {
     .filter((x) => x.id !== job.id)
     .sort((a, b) => Number(b.category === job.category) - Number(a.category === job.category))
     .slice(0, 3);
+  const selectedJob = job;
+  function toggleSaved() {
+    if (run({ type: "toggle_saved", jobId: selectedJob.id }) && isPostHogConfigured) {
+      posthog.capture(saved ? "job_unsaved" : "job_saved", {
+        job_id: selectedJob.id,
+        job_category: selectedJob.category,
+      });
+    }
+  }
   return (
     <article className="pp-offer-page pp-container pp-offer-main">
       <nav className="pp-offer-breadcrumb" aria-label="Powrót do ofert">
@@ -427,7 +461,7 @@ export function JobPage() {
                       variant="outline"
                       aria-label="Zapisz ofertę"
                       aria-pressed={saved}
-                      onClick={() => run({ type: "toggle_saved", jobId: job.id })}
+                      onClick={toggleSaved}
                     >
                       <Bookmark className={cn(saved && "fill-current")} />
                       Zapisz ofertę
@@ -447,7 +481,7 @@ export function JobPage() {
                     variant="outline"
                     aria-label="Zapisz ofertę"
                     aria-pressed={saved}
-                    onClick={() => run({ type: "toggle_saved", jobId: job.id })}
+                    onClick={toggleSaved}
                   >
                     <Bookmark className={cn(saved && "fill-current")} />
                     Zapisz ofertę
